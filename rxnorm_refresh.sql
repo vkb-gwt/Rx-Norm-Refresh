@@ -140,7 +140,6 @@ USING (
     SELECT
         ec.codesystem,
         ec.code,
-        ec.description,
         ec.esd,
         rp.retirement_eed
     FROM expired_codes ec
@@ -148,7 +147,6 @@ USING (
 ) retirements
 ON rx.codesystem = retirements.codesystem
 AND rx.code = retirements.code
-AND rx.description = retirements.description
 AND rx.esd = retirements.esd
 AND rx.eed IS NULL
 WHEN MATCHED THEN UPDATE SET

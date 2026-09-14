@@ -10,9 +10,10 @@ This repository documents the monthly procedure for refreshing RxNorm drug codes
 
 1. Build a temporary current-month RxNorm view from the source reference tables.
 2. Identify current RxNorm rows that are new or have changed relative to the active reference rows.
-3. Identify active rows that are no longer represented by the latest source data.
-4. End-date the existing active rows that have expired.
-5. Insert the remaining current rows as the new active versions.
+3. Identify active rows whose codes are no longer represented by the latest source data.
+4. Identify active rows whose descriptions have changed and must be versioned.
+5. End-date the existing active rows that have expired or been replaced.
+6. Insert the remaining current rows as the new active versions.
 
 ## Notes
 

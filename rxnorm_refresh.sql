@@ -43,6 +43,7 @@ FROM current_month_rxnorm cm
 LEFT JOIN ca_phm_stg.caphm_sandbox_reference_drug.rxnorm_drug_code rx
   ON rx.codesystem = cm.codesystem
  AND rx.code = cm.code
+ AND rx.eed IS NULL
 WHERE rx.code IS NULL;
 
 -- ======================================================

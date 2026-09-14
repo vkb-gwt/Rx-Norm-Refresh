@@ -123,25 +123,19 @@ WHERE rx.eed IS NULL
 -- This updates the existing active rows so they are no longer returned
 -- as active once the new refresh month begins.
 -- ======================================================
-MERGE INTO ca_phm_stg.caphm_sandbox_reference_drug.rxnorm_drug_code rx
-USING (
-    SELECT
-        ec.codesystem,
-        ec.code,
-        ec.description,
-        ec.esd,
-        rp.retirement_eed
-    FROM expired_codes ec
-    CROSS JOIN refresh_parameters rp
-) retirements
-ON rx.codesystem = retirements.codesystem
-AND rx.code = retirements.code
-AND rx.description = retirements.description
-AND rx.esd = retirements.esd
-AND rx.eed IS NULL
-WHEN MATCHED THEN UPDATE SET
-    rx.add_end = 'E',
-    rx.eed = retirements.retirement_eed;
+UPDATE ca_phm_stg.caphm_sandbox_reference_drug.rxnorm_drug_code rx
+SET
+    add_end = 'E',
+    eed = (SELECT retirement_eed FROM refresh_parameters)
+WHERE rx.eed IS NULL
+  AND EXISTS (
+      SELECT 1
+      FROM expired_codes ec
+      WHERE ec.codesystem = rx.codesystem
+        AND ec.code = rx.code
+        AND ec.description = rx.description
+        AND ec.esd = rx.esd
+  );
 
 -- ======================================================
 -- STEP 5: append new active code additions into rxnorm_drug_code

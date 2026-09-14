@@ -22,3 +22,4 @@ This repository documents the monthly procedure for refreshing RxNorm drug codes
 - The refresh-period parameters derive both the addition start date and the retirement end date from the same source month so a single run stays temporally consistent.
 - The retirement effective end date is derived as the last day of the previous month via the `refresh_parameters` view so the prior record remains active through that date.
 - When multiple preferred RxNorm terms map to the same NDC, the script keeps one deterministic description using `SCD`, `SBD`, `GPCK`, then `BPCK` precedence.
+- The source extract filters out suppressed RxNorm content, and a description change for an active NDC is treated as a new active version while the prior version is end-dated.

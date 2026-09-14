@@ -41,9 +41,11 @@ WITH source_rxnorm AS (
     JOIN ca_phm_stg.bronze_ca_phm_ref.rxnconso rc
       ON rs.rxcui = rc.rxcui
     WHERE rs.atn = 'NDC'
+      AND COALESCE(rs.suppress, 'N') = 'N'
       AND rc.sab = 'RXNORM'
       AND rc.lat = 'ENG'
       AND rc.ispref = 'Y'
+      AND COALESCE(rc.suppress, 'N') = 'N'
       AND rc.tty IN ('SCD', 'SBD', 'GPCK', 'BPCK')
 ),
 ranked_rxnorm AS (
@@ -89,6 +91,7 @@ CROSS JOIN refresh_parameters rp
 LEFT JOIN ca_phm_stg.caphm_sandbox_reference_drug.rxnorm_drug_code rx
   ON rx.codesystem = cm.codesystem
  AND rx.code = cm.code
+ AND rx.description = cm.description
  AND rx.eed IS NULL
 WHERE rx.code IS NULL;
 
@@ -130,6 +133,7 @@ FROM ca_phm_stg.caphm_sandbox_reference_drug.rxnorm_drug_code rx
 LEFT JOIN current_month_rxnorm cm
   ON rx.codesystem = cm.codesystem
  AND rx.code = cm.code
+ AND rx.description = cm.description
 WHERE rx.eed IS NULL
   AND rx.codesystem = 'RXNORM_DRUG_CODE'
   AND cm.code IS NULL;

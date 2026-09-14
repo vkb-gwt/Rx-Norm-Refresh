@@ -12,6 +12,9 @@
 -- STEP 0: define refresh-period parameters
 -- This view derives the retirement effective end date from the current
 -- refresh month so the procedure does not rely on a fixed literal.
+-- Business rule: retirements become effective on the first day of the
+-- refresh month, which preserves the prior code as active through the
+-- end of the previous month.
 -- ======================================================
 CREATE OR REPLACE TEMP VIEW refresh_parameters AS
 SELECT CAST(date_trunc('MONTH', current_date()) AS DATE) AS retirement_eed;
@@ -27,7 +30,7 @@ SELECT DISTINCT
     rc.str AS description
 FROM ca_phm_stg.bronze_ca_phm_ref.rxnsat rs
 JOIN ca_phm_stg.bronze_ca_phm_ref.rxnconso rc
-  ON rs.rxaui = rc.rxaui
+  ON rs.rxcui = rc.rxcui
 WHERE rs.atn = 'NDC'
   AND rc.sab = 'RXNORM'
   AND rc.lat = 'ENG'
@@ -97,25 +100,22 @@ WHERE rx.eed IS NULL
   AND cm.code IS NULL;
 
 -- ======================================================
--- STEP 5: append end-dated codes into rxnorm_drug_code
--- This inserts retirement rows for codes that should become inactive.
+-- STEP 5: end-date expired codes in rxnorm_drug_code
+-- This updates the existing active rows so they are no longer returned
+-- as active once the new refresh month begins.
 -- ======================================================
-INSERT INTO ca_phm_stg.caphm_sandbox_reference_drug.rxnorm_drug_code (
-    add_end,
-    codesystem,
-    code,
-    description,
-    esd,
-    eed,
-    note
-)
-SELECT
-    ec.add_end,
-    ec.codesystem,
-    ec.code,
-    ec.description,
-    ec.esd,
-    rp.retirement_eed AS eed,
-    ec.note
-FROM expired_codes ec
-CROSS JOIN refresh_parameters rp;
+MERGE INTO ca_phm_stg.caphm_sandbox_reference_drug.rxnorm_drug_code rx
+USING (
+    SELECT
+        ec.codesystem,
+        ec.code,
+        rp.retirement_eed
+    FROM expired_codes ec
+    CROSS JOIN refresh_parameters rp
+) retirements
+ON rx.codesystem = retirements.codesystem
+AND rx.code = retirements.code
+AND rx.eed IS NULL
+WHEN MATCHED THEN UPDATE SET
+    rx.add_end = 'E',
+    rx.eed = retirements.retirement_eed;

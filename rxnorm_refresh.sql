@@ -10,36 +10,29 @@
 
 -- ======================================================
 -- STEP 0: define refresh-period parameters
--- This view derives the retirement effective end date from the current
--- refresh month so the procedure does not rely on a fixed literal.
--- Business rule: eed is treated as an inclusive end date, so retirements
--- are stamped with the last day of the previous month to preserve the
--- prior code as active through that day.
+-- This view derives the effective dates for the refresh month so the
+-- procedure does not rely on fixed literals.
+-- Business rule: new rows begin on the first day of the refresh month,
+-- and eed is treated as an inclusive end date, so retirements are stamped
+-- with the last day of the previous month to preserve the prior code as
+-- active through that day.
 -- ======================================================
 CREATE OR REPLACE TEMP VIEW refresh_parameters AS
-SELECT date_sub(CAST(date_trunc('MONTH', current_date()) AS DATE), 1) AS retirement_eed;
+SELECT
+    CAST(date_trunc('MONTH', current_date()) AS DATE) AS refresh_esd,
+    date_sub(CAST(date_trunc('MONTH', current_date()) AS DATE), 1) AS retirement_eed;
 
 -- ======================================================
 -- STEP 1: create RxNorm temp table from source text files
 -- This view produces a curated list of RxNorm drug codes mapped to NDCs.
 -- ======================================================
 CREATE OR REPLACE TEMP VIEW current_month_rxnorm AS
-WITH ranked_rxnorm AS (
+WITH source_rxnorm AS (
     SELECT
+        DISTINCT
         rs.atv AS code,
         rc.str AS description,
-        ROW_NUMBER() OVER (
-            PARTITION BY rs.atv
-            ORDER BY
-                CASE rc.tty
-                    WHEN 'SCD' THEN 1
-                    WHEN 'SBD' THEN 2
-                    WHEN 'GPCK' THEN 3
-                    WHEN 'BPCK' THEN 4
-                    ELSE 5
-                END,
-                rc.str
-        ) AS row_num
+        rc.tty
     FROM ca_phm_stg.bronze_ca_phm_ref.rxnsat rs
     JOIN ca_phm_stg.bronze_ca_phm_ref.rxnconso rc
       ON rs.rxcui = rc.rxcui
@@ -48,6 +41,24 @@ WITH ranked_rxnorm AS (
       AND rc.lat = 'ENG'
       AND rc.ispref = 'Y'
       AND rc.tty IN ('SCD', 'SBD', 'GPCK', 'BPCK')
+),
+ranked_rxnorm AS (
+    SELECT
+        code,
+        description,
+        ROW_NUMBER() OVER (
+            PARTITION BY code
+            ORDER BY
+                CASE tty
+                    WHEN 'SCD' THEN 1
+                    WHEN 'SBD' THEN 2
+                    WHEN 'GPCK' THEN 3
+                    WHEN 'BPCK' THEN 4
+                    ELSE 5
+                END,
+                description
+        ) AS row_num
+    FROM source_rxnorm
 )
 SELECT
     'RXNORM_DRUG_CODE' AS codesystem,
@@ -67,9 +78,10 @@ SELECT
     cm.codesystem,
     cm.code,
     cm.description,
-    current_date() AS esd,
+    rp.refresh_esd AS esd,
     NULL AS note
 FROM current_month_rxnorm cm
+CROSS JOIN refresh_parameters rp
 LEFT JOIN ca_phm_stg.caphm_sandbox_reference_drug.rxnorm_drug_code rx
   ON rx.codesystem = cm.codesystem
  AND rx.code = cm.code

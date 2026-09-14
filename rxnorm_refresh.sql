@@ -126,8 +126,8 @@ CROSS JOIN refresh_parameters rp;
 
 -- ======================================================
 -- STEP 3: identify codes for end dating
--- This view identifies active reference codes that are no longer present
--- in the current month's RxNorm source data under the same code.
+-- This view identifies active reference rows whose exact current-month
+-- version is no longer represented by the source data.
 -- ======================================================
 CREATE OR REPLACE TEMP VIEW expired_codes AS
 SELECT
@@ -141,33 +141,13 @@ FROM ca_phm_stg.caphm_sandbox_reference_drug.rxnorm_drug_code rx
 LEFT JOIN current_month_rxnorm cm
   ON rx.codesystem = cm.codesystem
  AND rx.code = cm.code
+ AND rx.description = cm.description
 WHERE rx.eed IS NULL
   AND rx.codesystem = 'RXNORM_DRUG_CODE'
   AND cm.code IS NULL;
 
 -- ======================================================
--- STEP 4: identify active rows whose descriptions changed
--- This view captures the prior active versions that must be retired
--- before the replacement descriptions are inserted.
--- ======================================================
-CREATE OR REPLACE TEMP VIEW changed_active_rows AS
-SELECT DISTINCT
-    'E' AS add_end,
-    rx.codesystem,
-    rx.code,
-    rx.description,
-    rx.esd,
-    rx.note
-FROM ca_phm_stg.caphm_sandbox_reference_drug.rxnorm_drug_code rx
-JOIN current_month_rxnorm cm
-  ON rx.codesystem = cm.codesystem
- AND rx.code = cm.code
-WHERE rx.eed IS NULL
-  AND rx.codesystem = 'RXNORM_DRUG_CODE'
-  AND COALESCE(rx.description, '') <> COALESCE(cm.description, '');
-
--- ======================================================
--- STEP 5: end-date expired or replaced codes in rxnorm_drug_code
+-- STEP 4: end-date expired or replaced codes in rxnorm_drug_code
 -- This updates the existing active rows so they are no longer returned
 -- as active once the new refresh month begins.
 -- ======================================================
@@ -179,11 +159,7 @@ WHERE eed IS NULL
   AND codesystem = 'RXNORM_DRUG_CODE'
   AND EXISTS (
       SELECT 1
-      FROM (
-          SELECT codesystem, code, description, esd FROM expired_codes
-          UNION
-          SELECT codesystem, code, description, esd FROM changed_active_rows
-      ) ec
+      FROM expired_codes ec
       WHERE ec.codesystem = ca_phm_stg.caphm_sandbox_reference_drug.rxnorm_drug_code.codesystem
         AND ec.code = ca_phm_stg.caphm_sandbox_reference_drug.rxnorm_drug_code.code
         AND ec.description = ca_phm_stg.caphm_sandbox_reference_drug.rxnorm_drug_code.description
@@ -191,7 +167,7 @@ WHERE eed IS NULL
   );
 
 -- ======================================================
--- STEP 6: append new active code additions into rxnorm_drug_code
+-- STEP 5: append new active code additions into rxnorm_drug_code
 -- This inserts new RxNorm rows only after expired active rows have been
 -- end-dated, preventing overlapping active versions for the same code.
 -- ======================================================

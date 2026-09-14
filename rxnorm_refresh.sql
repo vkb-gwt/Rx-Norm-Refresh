@@ -33,7 +33,6 @@ WHERE rs.atn = 'NDC'
 CREATE OR REPLACE TEMP VIEW current_update AS
 SELECT
     'A' AS add_end,
-    NULL AS ref_id,
     cm.codesystem,
     cm.code,
     cm.description,
@@ -52,7 +51,6 @@ WHERE rx.code IS NULL;
 -- ======================================================
 INSERT INTO ca_phm_stg.caphm_sandbox_reference_drug.rxnorm_drug_code (
     add_end,
-    ref_id,
     codesystem,
     code,
     description,
@@ -61,7 +59,6 @@ INSERT INTO ca_phm_stg.caphm_sandbox_reference_drug.rxnorm_drug_code (
 )
 SELECT
     add_end,
-    ref_id,
     codesystem,
     code,
     description,
@@ -77,7 +74,6 @@ FROM current_update;
 CREATE OR REPLACE TEMP VIEW expired_codes AS
 SELECT
     'E' AS add_end,
-    rx.ref_id,
     rx.codesystem,
     rx.code,
     rx.description,
@@ -97,7 +93,6 @@ WHERE rx.eed IS NULL
 -- ======================================================
 INSERT INTO ca_phm_stg.caphm_sandbox_reference_drug.rxnorm_drug_code (
     add_end,
-    ref_id,
     codesystem,
     code,
     description,
@@ -107,7 +102,6 @@ INSERT INTO ca_phm_stg.caphm_sandbox_reference_drug.rxnorm_drug_code (
 )
 SELECT
     add_end,
-    ref_id,
     codesystem,
     code,
     description,

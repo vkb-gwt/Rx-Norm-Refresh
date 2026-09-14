@@ -123,18 +123,18 @@ WHERE rx.eed IS NULL
 -- This updates the existing active rows so they are no longer returned
 -- as active once the new refresh month begins.
 -- ======================================================
-UPDATE ca_phm_stg.caphm_sandbox_reference_drug.rxnorm_drug_code rx
+UPDATE ca_phm_stg.caphm_sandbox_reference_drug.rxnorm_drug_code
 SET
     add_end = 'E',
     eed = (SELECT retirement_eed FROM refresh_parameters)
-WHERE rx.eed IS NULL
+WHERE eed IS NULL
   AND EXISTS (
       SELECT 1
       FROM expired_codes ec
-      WHERE ec.codesystem = rx.codesystem
-        AND ec.code = rx.code
-        AND ec.description = rx.description
-        AND ec.esd = rx.esd
+      WHERE ec.codesystem = codesystem
+        AND ec.code = code
+        AND ec.description = description
+        AND ec.esd = esd
   );
 
 -- ======================================================

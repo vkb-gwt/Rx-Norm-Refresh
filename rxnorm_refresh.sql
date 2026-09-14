@@ -24,18 +24,37 @@ SELECT date_sub(CAST(date_trunc('MONTH', current_date()) AS DATE), 1) AS retirem
 -- This view produces a curated list of RxNorm drug codes mapped to NDCs.
 -- ======================================================
 CREATE OR REPLACE TEMP VIEW current_month_rxnorm AS
-SELECT DISTINCT
+WITH ranked_rxnorm AS (
+    SELECT
+        rs.atv AS code,
+        rc.str AS description,
+        ROW_NUMBER() OVER (
+            PARTITION BY rs.atv
+            ORDER BY
+                CASE rc.tty
+                    WHEN 'SCD' THEN 1
+                    WHEN 'SBD' THEN 2
+                    WHEN 'GPCK' THEN 3
+                    WHEN 'BPCK' THEN 4
+                    ELSE 5
+                END,
+                rc.str
+        ) AS row_num
+    FROM ca_phm_stg.bronze_ca_phm_ref.rxnsat rs
+    JOIN ca_phm_stg.bronze_ca_phm_ref.rxnconso rc
+      ON rs.rxcui = rc.rxcui
+    WHERE rs.atn = 'NDC'
+      AND rc.sab = 'RXNORM'
+      AND rc.lat = 'ENG'
+      AND rc.ispref = 'Y'
+      AND rc.tty IN ('SCD', 'SBD', 'GPCK', 'BPCK')
+)
+SELECT
     'RXNORM_DRUG_CODE' AS codesystem,
-    rs.atv AS code,
-    rc.str AS description
-FROM ca_phm_stg.bronze_ca_phm_ref.rxnsat rs
-JOIN ca_phm_stg.bronze_ca_phm_ref.rxnconso rc
-  ON rs.rxcui = rc.rxcui
-WHERE rs.atn = 'NDC'
-  AND rc.sab = 'RXNORM'
-  AND rc.lat = 'ENG'
-  AND rc.ispref = 'Y'
-  AND rc.tty IN ('SCD', 'SBD', 'GPCK', 'BPCK');
+    code,
+    description
+FROM ranked_rxnorm
+WHERE row_num = 1;
 
 -- ======================================================
 -- STEP 2: create temp table for new/append codes

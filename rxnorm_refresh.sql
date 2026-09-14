@@ -10,8 +10,12 @@
 
 -- ======================================================
 -- STEP 0: define refresh-period parameters
+-- Supply refresh_month_start as the first day of the source-data month
+-- being processed (for example, 2026-08-01 for the August 2026 files).
+-- The value below is a runtime placeholder and should be substituted by
+-- the execution environment before the script runs.
 -- This view derives the effective dates for the refresh month so the
--- procedure does not rely on fixed literals.
+-- procedure does not rely on the runtime execution date.
 -- Business rule: new rows begin on the first day of the refresh month,
 -- and eed is treated as an inclusive end date, so retirements are stamped
 -- with the last day of the previous month to preserve the prior code as
@@ -19,8 +23,8 @@
 -- ======================================================
 CREATE OR REPLACE TEMP VIEW refresh_parameters AS
 SELECT
-    CAST(date_trunc('MONTH', current_date()) AS DATE) AS refresh_esd,
-    date_sub(CAST(date_trunc('MONTH', current_date()) AS DATE), 1) AS retirement_eed;
+    CAST('${refresh_month_start}' AS DATE) AS refresh_esd,
+    date_sub(CAST('${refresh_month_start}' AS DATE), 1) AS retirement_eed;
 
 -- ======================================================
 -- STEP 1: create RxNorm temp table from source text files

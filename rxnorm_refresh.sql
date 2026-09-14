@@ -4,10 +4,17 @@
 -- and active codes to retire from the reference table.
 --
 -- Assumptions:
---   * ref_id is generated automatically by the target table, or may be NULL on insert.
+--   * ref_id is generated automatically by the target table.
 --   * note is optional metadata and is set to NULL by default in this procedure.
---   * Replace the hard-coded EED value before running the retirement step.
 -- ======================================================
+
+-- ======================================================
+-- STEP 0: define refresh-period parameters
+-- This view derives the retirement effective end date from the current
+-- refresh month so the procedure does not rely on a fixed literal.
+-- ======================================================
+CREATE OR REPLACE TEMP VIEW refresh_parameters AS
+SELECT CAST(date_trunc('MONTH', current_date()) AS DATE) AS retirement_eed;
 
 -- ======================================================
 -- STEP 1: create RxNorm temp table from source text files
@@ -23,6 +30,8 @@ JOIN ca_phm_stg.bronze_ca_phm_ref.rxnconso rc
   ON rs.rxaui = rc.rxaui
 WHERE rs.atn = 'NDC'
   AND rc.sab = 'RXNORM'
+  AND rc.lat = 'ENG'
+  AND rc.ispref = 'Y'
   AND rc.tty IN ('SCD', 'SBD', 'GPCK', 'BPCK');
 
 -- ======================================================
@@ -90,7 +99,6 @@ WHERE rx.eed IS NULL
 -- ======================================================
 -- STEP 5: append end-dated codes into rxnorm_drug_code
 -- This inserts retirement rows for codes that should become inactive.
--- Replace the EED literal below with the appropriate monthly cutoff date.
 -- ======================================================
 INSERT INTO ca_phm_stg.caphm_sandbox_reference_drug.rxnorm_drug_code (
     add_end,
@@ -102,11 +110,12 @@ INSERT INTO ca_phm_stg.caphm_sandbox_reference_drug.rxnorm_drug_code (
     note
 )
 SELECT
-    add_end,
-    codesystem,
-    code,
-    description,
-    esd,
-    DATE '2026-08-01' AS eed,
-    note
-FROM expired_codes;
+    ec.add_end,
+    ec.codesystem,
+    ec.code,
+    ec.description,
+    ec.esd,
+    rp.retirement_eed AS eed,
+    ec.note
+FROM expired_codes ec
+CROSS JOIN refresh_parameters rp;

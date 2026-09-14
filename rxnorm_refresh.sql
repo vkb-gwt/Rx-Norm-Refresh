@@ -128,6 +128,7 @@ SET
     add_end = 'E',
     eed = (SELECT retirement_eed FROM refresh_parameters)
 WHERE eed IS NULL
+  AND codesystem = 'RXNORM_DRUG_CODE'
   AND EXISTS (
       SELECT 1
       FROM expired_codes ec

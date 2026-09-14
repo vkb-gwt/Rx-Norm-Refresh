@@ -84,6 +84,7 @@ LEFT JOIN current_month_rxnorm cm
   ON rx.codesystem = cm.codesystem
  AND rx.code = cm.code
 WHERE rx.eed IS NULL
+  AND rx.codesystem = 'RXNORM_DRUG_CODE'
   AND cm.code IS NULL;
 
 -- ======================================================

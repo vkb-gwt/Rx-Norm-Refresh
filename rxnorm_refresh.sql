@@ -1,0 +1,189 @@
+-- ======================================================
+-- RxNorm monthly refresh process
+-- This script identifies new RxNorm-to-NDC mappings to add,
+-- and active codes to retire from the reference table.
+--
+-- Assumptions:
+--   * ref_id is generated automatically by the target table.
+--   * note is optional metadata and is set to NULL by default in this procedure.
+-- ======================================================
+
+-- ======================================================
+-- STEP 0: define refresh-period parameters
+-- Supply refresh_month_start as the first day of the source-data month
+-- being processed (for example, 2026-08-01 for the August 2026 files).
+-- The value below is a runtime placeholder and should be substituted by
+-- the execution environment before the script runs.
+-- This view derives the effective dates for the refresh month so the
+-- procedure does not rely on the runtime execution date.
+-- Business rule: new rows begin on the first day of the refresh month,
+-- and eed is treated as an inclusive end date, so retirements are stamped
+-- with the last day of the previous month to preserve the prior code as
+-- active through that day.
+-- ======================================================
+CREATE OR REPLACE TEMP VIEW refresh_parameters AS
+SELECT
+    CAST('${refresh_month_start}' AS DATE) AS refresh_esd,
+    date_sub(CAST('${refresh_month_start}' AS DATE), 1) AS retirement_eed;
+
+-- ======================================================
+-- STEP 1: create RxNorm temp table from source text files
+-- This view produces a curated list of RxNorm drug codes mapped to NDCs.
+-- ======================================================
+CREATE OR REPLACE TEMP VIEW current_month_rxnorm AS
+WITH source_rxnorm AS (
+    SELECT
+        DISTINCT
+        rs.atv AS code,
+        rc.str AS description,
+        rc.tty
+    FROM ca_phm_stg.bronze_ca_phm_ref.rxnsat rs
+    JOIN ca_phm_stg.bronze_ca_phm_ref.rxnconso rc
+      ON rs.rxcui = rc.rxcui
+    WHERE rs.atn = 'NDC'
+      AND COALESCE(rs.suppress, 'N') = 'N'
+      AND rc.sab = 'RXNORM'
+      AND rc.lat = 'ENG'
+      AND rc.ispref = 'Y'
+      AND COALESCE(rc.suppress, 'N') = 'N'
+      AND rc.tty IN ('SCD', 'SBD', 'GPCK', 'BPCK')
+),
+ranked_rxnorm AS (
+    SELECT
+        code,
+        description,
+        ROW_NUMBER() OVER (
+            PARTITION BY code
+            ORDER BY
+                CASE tty
+                    WHEN 'SCD' THEN 1
+                    WHEN 'SBD' THEN 2
+                    WHEN 'GPCK' THEN 3
+                    WHEN 'BPCK' THEN 4
+                    ELSE 5
+                END,
+                description
+        ) AS row_num
+    FROM source_rxnorm
+)
+SELECT
+    'RXNORM_DRUG_CODE' AS codesystem,
+    code,
+    description
+FROM ranked_rxnorm
+WHERE row_num = 1;
+
+-- ======================================================
+-- STEP 2: create temp table for new or changed active codes
+-- This view identifies current RxNorm rows that are either brand new or
+-- represent a description change from the active reference row.
+-- ======================================================
+CREATE OR REPLACE TEMP VIEW current_update AS
+WITH active_rxnorm AS (
+    SELECT
+        codesystem,
+        code,
+        description
+    FROM ca_phm_stg.caphm_sandbox_reference_drug.rxnorm_drug_code
+    WHERE eed IS NULL
+      AND codesystem = 'RXNORM_DRUG_CODE'
+),
+new_codes AS (
+    SELECT
+        cm.codesystem,
+        cm.code,
+        cm.description
+    FROM current_month_rxnorm cm
+    LEFT JOIN active_rxnorm rx
+      ON rx.codesystem = cm.codesystem
+     AND rx.code = cm.code
+    WHERE rx.code IS NULL
+),
+changed_codes AS (
+    SELECT DISTINCT
+        cm.codesystem,
+        cm.code,
+        cm.description
+    FROM current_month_rxnorm cm
+    JOIN active_rxnorm rx
+      ON rx.codesystem = cm.codesystem
+     AND rx.code = cm.code
+    WHERE COALESCE(rx.description, '') <> COALESCE(cm.description, '')
+)
+SELECT
+    'A' AS add_end,
+    updates.codesystem,
+    updates.code,
+    updates.description,
+    rp.refresh_esd AS esd,
+    NULL AS note
+FROM (
+    SELECT codesystem, code, description FROM new_codes
+    UNION
+    SELECT codesystem, code, description FROM changed_codes
+) updates
+CROSS JOIN refresh_parameters rp;
+
+-- ======================================================
+-- STEP 3: identify codes for end dating
+-- This view identifies active reference rows whose exact current-month
+-- version is no longer represented by the source data.
+-- ======================================================
+CREATE OR REPLACE TEMP VIEW expired_codes AS
+SELECT
+    'E' AS add_end,
+    rx.codesystem,
+    rx.code,
+    rx.description,
+    rx.esd,
+    rx.note
+FROM ca_phm_stg.caphm_sandbox_reference_drug.rxnorm_drug_code rx
+LEFT JOIN current_month_rxnorm cm
+  ON rx.codesystem = cm.codesystem
+ AND rx.code = cm.code
+ AND rx.description <=> cm.description
+WHERE rx.eed IS NULL
+  AND rx.codesystem = 'RXNORM_DRUG_CODE'
+  AND cm.code IS NULL;
+
+-- ======================================================
+-- STEP 4: end-date expired or replaced codes in rxnorm_drug_code
+-- This updates the existing active rows so they are no longer returned
+-- as active once the new refresh month begins.
+-- ======================================================
+UPDATE ca_phm_stg.caphm_sandbox_reference_drug.rxnorm_drug_code
+SET
+    eed = (SELECT retirement_eed FROM refresh_parameters)
+WHERE eed IS NULL
+  AND codesystem = 'RXNORM_DRUG_CODE'
+  AND esd < (SELECT refresh_esd FROM refresh_parameters)
+  AND EXISTS (
+      SELECT 1
+      FROM expired_codes ec
+      WHERE ec.codesystem = ca_phm_stg.caphm_sandbox_reference_drug.rxnorm_drug_code.codesystem
+        AND ec.code = ca_phm_stg.caphm_sandbox_reference_drug.rxnorm_drug_code.code
+        AND ec.description <=> ca_phm_stg.caphm_sandbox_reference_drug.rxnorm_drug_code.description
+        AND ec.esd = ca_phm_stg.caphm_sandbox_reference_drug.rxnorm_drug_code.esd
+  );
+
+-- ======================================================
+-- STEP 5: append new active code additions into rxnorm_drug_code
+-- This inserts new RxNorm rows only after expired active rows have been
+-- end-dated, preventing overlapping active versions for the same code.
+-- ======================================================
+INSERT INTO ca_phm_stg.caphm_sandbox_reference_drug.rxnorm_drug_code (
+    add_end,
+    codesystem,
+    code,
+    description,
+    esd,
+    note
+)
+SELECT
+    add_end,
+    codesystem,
+    code,
+    description,
+    esd,
+    note
+FROM current_update;

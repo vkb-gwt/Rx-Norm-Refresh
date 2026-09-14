@@ -12,12 +12,12 @@
 -- STEP 0: define refresh-period parameters
 -- This view derives the retirement effective end date from the current
 -- refresh month so the procedure does not rely on a fixed literal.
--- Business rule: retirements become effective on the first day of the
--- refresh month, which preserves the prior code as active through the
--- end of the previous month.
+-- Business rule: eed is treated as an inclusive end date, so retirements
+-- are stamped with the last day of the previous month to preserve the
+-- prior code as active through that day.
 -- ======================================================
 CREATE OR REPLACE TEMP VIEW refresh_parameters AS
-SELECT CAST(date_trunc('MONTH', current_date()) AS DATE) AS retirement_eed;
+SELECT date_sub(CAST(date_trunc('MONTH', current_date()) AS DATE), 1) AS retirement_eed;
 
 -- ======================================================
 -- STEP 1: create RxNorm temp table from source text files

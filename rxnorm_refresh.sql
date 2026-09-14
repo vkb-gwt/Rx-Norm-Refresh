@@ -131,10 +131,10 @@ WHERE eed IS NULL
   AND EXISTS (
       SELECT 1
       FROM expired_codes ec
-      WHERE ec.codesystem = codesystem
-        AND ec.code = code
-        AND ec.description = description
-        AND ec.esd = esd
+      WHERE ec.codesystem = ca_phm_stg.caphm_sandbox_reference_drug.rxnorm_drug_code.codesystem
+        AND ec.code = ca_phm_stg.caphm_sandbox_reference_drug.rxnorm_drug_code.code
+        AND ec.description = ca_phm_stg.caphm_sandbox_reference_drug.rxnorm_drug_code.description
+        AND ec.esd = ca_phm_stg.caphm_sandbox_reference_drug.rxnorm_drug_code.esd
   );
 
 -- ======================================================

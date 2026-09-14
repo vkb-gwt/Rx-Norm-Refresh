@@ -4,7 +4,7 @@ This repository documents the monthly procedure for refreshing RxNorm drug codes
 
 ## Files
 
-- `/home/runner/work/Rx-Norm-Refresh/Rx-Norm-Refresh/rxnorm_refresh.sql` - SQL workflow for identifying new RxNorm drug codes to add and existing codes to retire.
+- `rxnorm_refresh.sql` - SQL workflow for identifying new RxNorm drug codes to add and existing codes to retire.
 
 ## Process summary
 

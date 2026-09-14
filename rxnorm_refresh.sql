@@ -41,7 +41,8 @@ SELECT
     NULL AS note
 FROM current_month_rxnorm cm
 LEFT JOIN ca_phm_stg.caphm_sandbox_reference_drug.rxnorm_drug_code rx
-  ON rx.code = cm.code
+  ON rx.codesystem = cm.codesystem
+ AND rx.code = cm.code
 WHERE rx.code IS NULL;
 
 -- ======================================================
@@ -83,7 +84,8 @@ SELECT
     rx.note
 FROM ca_phm_stg.caphm_sandbox_reference_drug.rxnorm_drug_code rx
 LEFT JOIN current_month_rxnorm cm
-  ON rx.code = cm.code
+  ON rx.codesystem = cm.codesystem
+ AND rx.code = cm.code
 WHERE rx.eed IS NULL
   AND cm.code IS NULL;
 

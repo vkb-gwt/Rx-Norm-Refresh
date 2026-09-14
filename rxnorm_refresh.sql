@@ -153,7 +153,6 @@ WHERE rx.eed IS NULL
 -- ======================================================
 UPDATE ca_phm_stg.caphm_sandbox_reference_drug.rxnorm_drug_code
 SET
-    add_end = 'E',
     eed = (SELECT retirement_eed FROM refresh_parameters)
 WHERE eed IS NULL
   AND codesystem = 'RXNORM_DRUG_CODE'

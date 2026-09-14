@@ -74,9 +74,10 @@ FROM ranked_rxnorm
 WHERE row_num = 1;
 
 -- ======================================================
--- STEP 2: create temp table for new/append codes
--- This view identifies codes present in the current source data but missing
--- from the existing RxNorm reference table, preparing them for insertion.
+-- STEP 2: create temp table for new or changed active codes
+-- This view identifies current RxNorm rows that do not have a matching
+-- active version in the reference table and prepares them for insertion
+-- after expired active rows have been end-dated.
 -- ======================================================
 CREATE OR REPLACE TEMP VIEW current_update AS
 SELECT
@@ -96,28 +97,7 @@ LEFT JOIN ca_phm_stg.caphm_sandbox_reference_drug.rxnorm_drug_code rx
 WHERE rx.code IS NULL;
 
 -- ======================================================
--- STEP 3: append new code additions into rxnorm_drug_code
--- This inserts only the new RxNorm drug codes identified in current_update.
--- ======================================================
-INSERT INTO ca_phm_stg.caphm_sandbox_reference_drug.rxnorm_drug_code (
-    add_end,
-    codesystem,
-    code,
-    description,
-    esd,
-    note
-)
-SELECT
-    add_end,
-    codesystem,
-    code,
-    description,
-    esd,
-    note
-FROM current_update;
-
--- ======================================================
--- STEP 4: identify codes for end dating
+-- STEP 3: identify codes for end dating
 -- This view identifies active reference codes that are no longer present
 -- in the current month's RxNorm source data.
 -- ======================================================
@@ -139,7 +119,7 @@ WHERE rx.eed IS NULL
   AND cm.code IS NULL;
 
 -- ======================================================
--- STEP 5: end-date expired codes in rxnorm_drug_code
+-- STEP 4: end-date expired codes in rxnorm_drug_code
 -- This updates the existing active rows so they are no longer returned
 -- as active once the new refresh month begins.
 -- ======================================================
@@ -162,3 +142,25 @@ AND rx.eed IS NULL
 WHEN MATCHED THEN UPDATE SET
     rx.add_end = 'E',
     rx.eed = retirements.retirement_eed;
+
+-- ======================================================
+-- STEP 5: append new active code additions into rxnorm_drug_code
+-- This inserts new RxNorm rows only after expired active rows have been
+-- end-dated, preventing overlapping active versions for the same code.
+-- ======================================================
+INSERT INTO ca_phm_stg.caphm_sandbox_reference_drug.rxnorm_drug_code (
+    add_end,
+    codesystem,
+    code,
+    description,
+    esd,
+    note
+)
+SELECT
+    add_end,
+    codesystem,
+    code,
+    description,
+    esd,
+    note
+FROM current_update;
